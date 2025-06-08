@@ -1,0 +1,129 @@
+-- Project: coding-2-457907
+-- Dataset: pharmacy_dataset
+-- Tabel: Pharmacy_Inventory, Inpatient_Drug_Usage, Outpatient_Drug_Sales
+
+-- 1. Analisis Persediaan Farmasi: Total biaya pembelian per jenis obat dan tren bulanan
+WITH InventoryCost AS (
+  SELECT
+    Drug_Name,
+    EXTRACT(MONTH FROM Date) AS Month,
+    FORMAT_DATE('%b %Y', Date) AS Month_Name,
+    SUM(Quantity_Unit) AS Total_Quantity_Units,
+    SUM(Total_Cost_USD) AS Total_Cost_USD,
+    ROUND(SUM(Total_Cost_USD) / SUM(Quantity_Unit), 2) AS Avg_Cost_Per_Unit
+  FROM
+    `coding-2-457907.pharmacy_dataset.Pharmacy_Inventory`
+  GROUP BY
+    Drug_Name, Month, Month_Name
+)
+SELECT
+  Drug_Name,
+  Month_Name,
+  Total_Quantity_Units,
+  Total_Cost_USD,
+  Avg_Cost_Per_Unit
+FROM
+  InventoryCost
+ORDER BY
+  Drug_Name, Month;
+
+-- 2. Analisis Pemakaian Obat Rawat Inap: Total pemakaian dan biaya FIFO per jenis obat
+WITH InpatientUsage AS (
+  SELECT
+    Drug_Name,
+    EXTRACT(MONTH FROM Date) AS Month,
+    FORMAT_DATE('%b %Y', Date) AS Month_Name,
+    SUM(Quantity_Used_Unit) AS Total_Quantity_Used_Units,
+    SUM(Total_Cost_FIFO_USD) AS Total_Cost_FIFO_USD,
+    ROUND(SUM(Total_Cost_FIFO_USD) / SUM(Quantity_Used_Unit), 2) AS Avg_Cost_FIFO_Per_Unit
+  FROM
+    `coding-2-457907.pharmacy_dataset.Inpatient_Drug_Usage`
+  GROUP BY
+    Drug_Name, Month, Month_Name
+)
+SELECT
+  Drug_Name,
+  Month_Name,
+  Total_Quantity_Used_Units,
+  Total_Cost_FIFO_USD,
+  Avg_Cost_FIFO_Per_Unit
+FROM
+  InpatientUsage
+ORDER BY
+  Drug_Name, Month;
+
+-- 3. Analisis Penjualan Obat Rawat Jalan: Pendapatan, biaya FIFO, dan margin keuntungan
+WITH OutpatientSales AS (
+  SELECT
+    Drug_Name,
+    EXTRACT(MONTH FROM Date) AS Month,
+    FORMAT_DATE('%b %Y', Date) AS Month_Name,
+    SUM(Quantity_Sold_Unit) AS Total_Quantity_Sold_Units,
+    SUM(Total_Revenue_USD) AS Total_Revenue_USD,
+    SUM(Total_Cost_FIFO_USD) AS Total_Cost_FIFO_USD,
+    SUM(Total_Revenue_USD) - SUM(Total_Cost_FIFO_USD) AS Gross_Profit_USD,
+    ROUND((SUM(Total_Revenue_USD) - SUM(Total_Cost_FIFO_USD)) / SUM(Total_Revenue_USD) * 100, 2) AS Profit_Margin_Percent
+  FROM
+    `coding-2-457907.pharmacy_dataset.Outpatient_Drug_Sales`
+  GROUP BY
+    Drug_Name, Month, Month_Name
+)
+SELECT
+  Drug_Name,
+  Month_Name,
+  Total_Quantity_Sold_Units,
+  Total_Revenue_USD,
+  Total_Cost_FIFO_USD,
+  Gross_Profit_USD,
+  Profit_Margin_Percent
+FROM
+  OutpatientSales
+ORDER BY
+  Drug_Name, Month;
+
+-- 4. Analisis Gabungan: Efisiensi penggunaan stok dan laba kotor
+WITH StockUsage AS (
+  SELECT
+    EXTRACT(MONTH FROM i.Date) AS Month,
+    FORMAT_DATE('%b %Y', i.Date) AS Month_Name,
+    i.Drug_Name,
+    SUM(i.Quantity_Unit) AS Total_Stock_Acquired_Units,
+    SUM(i.Total_Cost_USD) AS Total_Stock_Cost_USD,
+    SUM(u.Quantity_Used_Unit) AS Total_Inpatient_Usage_Units,
+    SUM(u.Total_Cost_FIFO_USD) AS Total_Inpatient_Cost_USD,
+    SUM(s.Quantity_Sold_Unit) AS Total_Outpatient_Sold_Units,
+    SUM(s.Total_Cost_FIFO_USD) AS Total_Outpatient_Cost_USD,
+    SUM(s.Total_Revenue_USD) AS Total_Outpatient_Revenue_USD,
+    SUM(s.Total_Revenue_USD) - (SUM(u.Total_Cost_FIFO_USD) + SUM(s.Total_Cost_FIFO_USD)) AS Total_Gross_Profit_USD,
+    ROUND((SUM(u.Quantity_Used_Unit) + SUM(s.Quantity_Sold_Unit)) / SUM(i.Quantity_Unit) * 100, 2) AS Stock_Turnover_Percent
+  FROM
+    `coding-2-457907.pharmacy_dataset.Pharmacy_Inventory` i
+  LEFT JOIN
+    `coding-2-457907.pharmacy_dataset.Inpatient_Drug_Usage` u
+  ON
+    i.Drug_Name = u.Drug_Name
+    AND EXTRACT(MONTH FROM i.Date) = EXTRACT(MONTH FROM u.Date)
+  LEFT JOIN
+    `coding-2-457907.pharmacy_dataset.Outpatient_Drug_Sales` s
+  ON
+    i.Drug_Name = s.Drug_Name
+    AND EXTRACT(MONTH FROM i.Date) = EXTRACT(MONTH FROM s.Date)
+  GROUP BY
+    Month, Month_Name, i.Drug_Name
+)
+SELECT
+  Month_Name,
+  Drug_Name,
+  Total_Stock_Acquired_Units,
+  Total_Stock_Cost_USD,
+  Total_Inpatient_Usage_Units,
+  Total_Inpatient_Cost_USD,
+  Total_Outpatient_Sold_Units,
+  Total_Outpatient_Cost_USD,
+  Total_Outpatient_Revenue_USD,
+  Total_Gross_Profit_USD,
+  Stock_Turnover_Percent
+FROM
+  StockUsage
+ORDER BY
+  Month, Drug_Name;
